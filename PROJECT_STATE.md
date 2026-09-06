@@ -21,14 +21,13 @@ directly — while keeping every generated case, mesh setting, and log
 fully inspectable.
 
 **Current objective:**
-Complete Phase 1 (native application shell) and get it verified — the
-code has been written but not yet compiled or run on real hardware (see
-Section 16). Next real objective after verification is Phase 2:
-geometry import (STL/OBJ) and validation.
+Phase 1 is complete and verified (build, tests, and app launch all
+confirmed on real Apple Silicon hardware). Next objective: Phase 2 —
+geometry import (STL/OBJ) and validation (`GeometryKit`).
 
 **Project status:**
-`DEVELOPMENT` (Phase 1 of 12 — see `Documentation/architecture.md` for
-the full phase list)
+`DEVELOPMENT` (Phase 1 of 12 complete and verified — see
+`Documentation/architecture.md` for the full phase list)
 
 **Last updated:**
 2026-09-06
@@ -226,15 +225,18 @@ ADR-0003.
       made and recorded (ADR-0001 through 0004)
 - [x] Repository scaffold: license, governance docs, CI, issue/PR
       templates
-- [x] Phase 1 (written, not yet verified — see Section 16): SwiftUI app
-      shell with five-stage sidebar navigation and honest placeholders
-- [x] `AppCore.AppInfo` with unit tests (written, not yet run)
+- [x] Phase 1: SwiftUI app shell with five-stage sidebar navigation and
+      honest placeholders — **verified on real Apple Silicon hardware**
+      (M1, macOS 27 Beta, Xcode-beta 27.0): `swift build` passes,
+      `swift test` passes (3/3, `AppCoreTests`), `swift run` launches
+      the app with no crash. Checkpoints 1 and 2 both genuinely closed,
+      not just written.
+- [x] `AppCore.AppInfo` with unit tests — passing for real (3/3)
 
 ### In progress
 
-- [ ] Verification of Phase 1 (Checkpoints 1–2): needs `swift build` /
-      `swift test` / `swift run` on real Apple Silicon hardware, or a
-      green CI run, before it can be marked tested
+- [ ] None — Phase 1 is complete. Phase 2 (`GeometryKit`) has not
+      started yet.
 
 ### Not started
 
@@ -245,7 +247,7 @@ ADR-0003.
 
 | Bug | Severity | Status | Notes |
 |---|---|---|---|
-| None known | — | — | Nothing has been run yet to discover bugs against (see Section 16) |
+| `swift build` failed with "plugin for module 'SwiftUIMacros' not found" (and `PreviewsMacros`) | Was blocking (Checkpoint 1) | **Resolved** | Confirmed root cause: `xcode-select` was pointed at the standalone Command Line Tools, which don't bundle the `SwiftUIMacros`/`PreviewsMacros` compiler plugins. The Mac in question has `Xcode-beta.app` (matching its macOS 27 Beta), not `Xcode.app`. Fixed with `sudo xcode-select --switch /Applications/Xcode-beta.app/Contents/Developer` + `sudo xcodebuild -license accept`. Confirmed via `xcodebuild -version` (Xcode 27.0) and `xcrun --sdk macosx --show-sdk-version` (27.0) matching exactly — no SDK mismatch. `swift build` then succeeded: "Build complete! (10.65 sec)". |
 
 ### Known limitations
 
@@ -277,22 +279,31 @@ listed in Section 4's project structure, ready for `git init` + push, and
 buildable via `swift build` on the owner's own Apple Silicon Mac.
 
 **Current progress:**
-All files listed in Section 4 have been created. `LICENSE` required a
-workaround (see Section 11 journal entry on this) — repeated attempts to
-have the AI author write the full verbatim GPL-3.0 text via tool calls
-were aborted, most likely by an automated safety layer reacting to bulk
-verbatim reproduction of freshly-fetched web content. Resolved by having
-the project owner download the canonical text from gnu.org directly and
-upload it, then copying it into place with `cp` — no AI-generated large
-text block involved. This is now confirmed correct: 674 lines, correct
-header and footer.
+All files listed in Section 4 have been created and delivered. `LICENSE`
+required a workaround (see Section 11 journal entry) — repeated attempts
+to have the AI author write the full verbatim GPL-3.0 text via tool
+calls were aborted, most likely by an automated safety layer reacting to
+bulk verbatim reproduction of freshly-fetched web content. Resolved by
+having the project owner download the canonical text from gnu.org
+directly and upload it, then copying it into place with `cp`. The
+project owner then ran `git init`/commit (succeeded) and attempted
+`swift build`/`swift test` on real Apple Silicon hardware — `swift build`
+failed with a diagnosed, non-code, toolchain-environment issue (see
+Known Bugs, Section 5, and journal entry below).
 
 **Next action:**
-Zip the repository and deliver it to the project owner via
-`present_files`, with clear instructions for `git init`, first push, and
-manually verifying Checkpoints 1–2 (`swift build`, `swift test`,
-`swift run`) on their own Apple Silicon Mac, since this could not be
-verified in the authoring environment.
+Project owner to run the diagnostic commands given in this session
+(`xcode-select -p`, checking for `/Applications/Xcode.app`) and either
+switch the active developer directory to full Xcode.app, or — if that's
+unavailable/insufficient on their macOS 27 Beta install — open
+`Package.swift` directly in Xcode.app and build/run the `LibreTunnel`
+scheme from there instead of the `swift build` CLI. In parallel, running
+`swift test --filter AppCoreTests` or `swift build --target AppCore`
+isolates the non-SwiftUI module from this issue and should give a real,
+independent pass/fail result now, since `AppCore` doesn't import
+SwiftUI. Once the toolchain issue is resolved (or worked around),
+confirm `swift build && swift test && swift run` all succeed and update
+Section 16 with the real result before proceeding to Phase 2.
 
 ---
 
@@ -300,28 +311,33 @@ verified in the authoring environment.
 
 ### Tests that pass
 
-- [ ] Not yet run anywhere. `AppCoreTests` has been written
-      (`testDescribingFormatsAllFields`, `testEquality`,
-      `testCurrentFallsBackToDevelopmentDefaultsOutsideAnAppBundle`) but
-      has not been executed — no Swift toolchain was available in the
-      authoring environment.
+- [x] `swift build` — **passes** on real Apple Silicon hardware
+      (M1, macOS 27 Beta, Xcode-beta 27.0): "Build complete! (10.65 sec)".
+- [x] `swift test` (`AppCoreTests`) — **passes**, 3/3, confirmed on real
+      hardware: `testCurrentFallsBackToDevelopmentDefaultsOutsideAnAppBundle`,
+      `testDescribingFormatsAllFields`, `testEquality`. "Executed 3
+      tests, with 0 failures."
 
 ### Tests that fail
 
-- [ ] None known — nothing has been run yet.
+- [ ] None known.
 
 ### Manual testing performed
 
-- [ ] None yet. Manual checklist for Phase 1 is in
-      `Documentation/testing.md`.
+- [x] `git init && git add -A && git commit -s` — succeeded.
+- [x] `swift build` — succeeded.
+- [x] `swift test` — succeeded, 3/3.
+- [x] `swift run` — app launched, no crash, reported "works perfect...
+      fast and clean." Confirmation of all five individual sidebar
+      stages being clicked through specifically is pending — see
+      Section 9.
 
 ### Last known working state
 
-No "working" state has been established yet in the sense of having been
-run. The last known-*consistent* state is: repository scaffold complete,
-all files reviewed for internal consistency (Package.swift target paths
-match actual file locations), LICENSE verified correct by direct file
-inspection (line count, header, footer).
+Repository builds, tests, and runs successfully via `swift build` /
+`swift test` / `swift run` on real Apple Silicon hardware (M1, macOS 27
+Beta, Xcode-beta 27.0) as of 2026-09-06. Phase 1 is genuinely verified,
+not just written.
 
 ---
 
@@ -344,9 +360,28 @@ inspection (line count, header, footer).
 2. Who is the designated contact for `SECURITY.md` and
    `CODE_OF_CONDUCT.md` enforcement? Both currently note this as
    unresolved rather than guessing.
-3. Has Phase 1 actually been confirmed to build and run on real Apple
-   Silicon hardware yet? (As of this writing: not yet confirmed — see
-   Section 16.)
+3. ~~Has Phase 1 actually been confirmed to build and run on real Apple
+   Silicon hardware yet?~~ **Resolved: yes.** `swift build`, `swift
+   test` (3/3 passing), and `swift run` (launches, no crash) all
+   confirmed on real hardware as of 2026-09-06. One small residual: it's
+   not explicitly confirmed that all five individual sidebar stages
+   were clicked through during the `swift run` check, only that the app
+   launched and ran without crashing — low-risk given how simple the
+   placeholder views are, but noted for completeness rather than
+   silently assumed.
+4. Is the project owner's Mac running only Xcode Command Line Tools, or
+   is full Xcode.app also installed? `xcode-select -p` and the presence
+   of `/Applications/Xcode.app` will resolve this. Given the SDK path in
+   the build error (`/Library/Developer/CommandLineTools/SDKs/
+   MacOSX27.0.sdk`), the build is currently using the standalone
+   Command Line Tools, which do not bundle the `SwiftUIMacros`/
+   `PreviewsMacros` compiler plugins needed for `@State` and `#Preview`.
+5. The project owner appears to be running a beta OS
+   (`MacOSX27.0.sdk` in the build log). Is that intentional for
+   day-to-day development of this project, or incidental? Building
+   against a beta OS/toolchain widens the range of toolchain-level
+   issues (like the one just hit) that have nothing to do with this
+   project's own code.
 
 **Do not silently guess answers to important open questions.**
 
@@ -586,33 +621,204 @@ files, then zip and deliver.
 
 ---
 
+## [2026-09-06 04:00] — First real build attempt on Apple Silicon hardware: `swift build` fails, root cause diagnosed
+
+**Action:**
+Project owner unzipped the delivered scaffold on a real Apple Silicon
+Mac, ran `git init && git add -A && git commit -s`, then `swift test`
+(interrupted manually at `[69/119]`, no result either way), then
+`swift build` (ran to completion — failed).
+
+**Reason:**
+This was the planned verification step for Checkpoints 1–2, since the
+authoring environment had no Swift toolchain (see the 2026-09-06 02:00
+journal entry).
+
+**Changes:**
+None to the codebase yet — this entry is a diagnosis, not a fix.
+
+**Files affected:**
+None (diagnosis only).
+
+**Result:**
+`swift build` failed with:
+```
+error: external macro implementation type 'SwiftUIMacros.StateMacro'
+could not be found for macro 'State()'; plugin for module
+'SwiftUIMacros' not found
+```
+and an equivalent error for `PreviewsMacros`/`#Preview`, in
+`ContentView.swift` and `StagePlaceholderView.swift`.
+
+**Tests:**
+`swift test`: inconclusive (interrupted before completion).
+`swift build`: failed, real and reproducible.
+
+**Problems discovered:**
+Diagnosed root cause, not a defect in the four files that hit it:
+
+1. The build log shows the compiler invocation using
+   `/Library/Developer/CommandLineTools/SDKs/MacOSX27.0.sdk` and
+   `/Library/Developer/CommandLineTools/usr/bin/swift-frontend` — i.e.
+   the build used the **standalone Xcode Command Line Tools**, not full
+   Xcode.app.
+2. The `-load-resolved-plugin` flags in the failed invocation only
+   loaded `libObservationMacros.dylib` and `libSwiftMacros.dylib`, both
+   from the CommandLineTools toolchain's own plugin directory. There is
+   no `SwiftUIMacros` or `PreviewsMacros` plugin loaded at all.
+3. Research during this session confirmed those two plugins
+   (`libSwiftUIMacros.dylib`, `libPreviewsMacros.dylib`) ship only
+   inside full Xcode.app, under
+   `Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib/swift/host/plugins/`
+   — a location the standalone Command Line Tools package does not
+   include at all.
+4. Found a matching, currently open upstream bug report (unrelated
+   project, `drumih/turbo-fieldfare#121`) hitting the byte-for-byte
+   identical error message on the byte-for-byte identical environment
+   (macOS 27 Beta 4, Swift 6.4, target `arm64-apple-macosx27.0.0`),
+   confirming this is a known, reproducible toolchain/beta-OS pattern,
+   not something specific to this project's source.
+5. `@State` and `#Preview` are standard, correct, idiomatic SwiftUI —
+   deliberately not "fixed" by rewriting them to avoid the macro system,
+   since that would be treating an environment problem by degrading the
+   codebase.
+
+**Decision / reasoning:**
+Do not modify `ContentView.swift` or `StagePlaceholderView.swift` in
+response to this. The fix belongs in the local toolchain configuration
+(switch `xcode-select` to full Xcode.app, or build via Xcode.app
+directly instead of the `swift build` CLI), not in the source. Recorded
+as a Known Bug (Section 5) with status "diagnosed, not yet confirmed
+fixed" rather than closed, since the actual fix hasn't been verified
+yet.
+
+**Next step:**
+Project owner runs `xcode-select -p` and checks for
+`/Applications/Xcode.app`; switches the active developer directory if
+needed; if that's insufficient, builds via Xcode.app's own UI instead of
+`swift build`. In parallel, `swift test --filter AppCoreTests` (or
+`swift build --target AppCore`) should be run to get an independent,
+real result for the non-SwiftUI module while this is sorted out.
+
+## [2026-09-06 05:00] — Build failure resolved: xcode-select pointed at Xcode-beta.app
+
+**Action:**
+Diagnosed and fixed the `swift build` failure from the 04:00 entry.
+
+**Reason:**
+Confirm Checkpoint 1 for real before proceeding further.
+
+**Changes:**
+None to the codebase — this was purely a local toolchain configuration
+fix on the project owner's machine.
+
+**Files affected:**
+None.
+
+**Result:**
+`sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer`
+initially failed with "invalid developer directory" — that path doesn't
+exist on this machine. The actual installed app is **`Xcode-beta.app`**
+(consistent with running macOS 27 Beta). Switching to
+`/Applications/Xcode-beta.app/Contents/Developer` and running
+`sudo xcodebuild -license accept` succeeded.
+`xcodebuild -version` reports Xcode 27.0, and `xcrun --sdk macosx
+--show-sdk-version` reports SDK 27.0 — matching exactly, so there was no
+additional SDK/Xcode-version mismatch to worry about.
+`swift build` (run from the correct `LibreTunnel/` directory, after an
+initial `Package.swift not found` slip from running it in `~`) then
+succeeded: "Build complete! (10.65 sec)".
+
+**Tests:**
+`swift build`: **pass**, confirmed on real hardware.
+`swift test` / `swift run`: not yet run — next step.
+
+**Problems discovered:**
+None new. The original diagnosis (Section 5 Known Bugs, now resolved)
+was confirmed correct in every particular: wrong active developer
+directory, missing SwiftUI macro plugins, no code defect.
+
+**Decision / reasoning:**
+No source changes were needed or made, consistent with the earlier
+decision not to work around a local environment issue by modifying
+correct SwiftUI code.
+
+**Next step:**
+Run `swift test` (expect the three `AppCoreTests` to pass) and `swift
+run` (expect the app window to open with working sidebar navigation
+across all five placeholder stages — this is the actual Checkpoint 2
+verification). Update this file with those results.
+
+## [2026-09-06 06:00] — Phase 1 fully verified: build, tests, and run all confirmed on real hardware
+
+**Action:**
+Project owner ran `swift test` and `swift run` after the toolchain fix.
+
+**Reason:**
+Close out Checkpoints 1–2 with real evidence rather than assumption.
+
+**Changes:**
+None to the codebase.
+
+**Files affected:**
+None.
+
+**Result:**
+`swift test`: all 3 `AppCoreTests` passed ("Executed 3 tests, with 0
+failures"). `swift run`: app built (0.21s) and launched; project owner
+reports it "works perfect currently, no crashing, fast and clean."
+Terminal blocked on the running foreground process until interrupted
+with Ctrl-C, which is expected behavior for a GUI app launched this way,
+not a crash.
+
+**Tests:**
+`swift build`: pass. `swift test`: pass, 3/3. `swift run`: pass
+(qualitative — app launches and runs without crashing).
+
+**Problems discovered:**
+None. Also noted: the project owner's local `PROJECT_STATE.md` had not
+actually been overwritten with the versions presented in earlier turns
+before attempting to commit ("nothing to commit, working tree clean") —
+a process note for keeping this file synchronized, not a project defect.
+
+**Decision / reasoning:**
+Phase 1 (native application shell) is complete and verified.
+Checkpoints 1 ("clean project builds from source") and 2 ("native
+macOS application launches on Apple Silicon") are both closed with real
+evidence, per Section 16.
+
+**Next step:**
+Begin Phase 2: `GeometryKit` (STL/OBJ import and validation). Also worth
+doing before or alongside Phase 2: push this repository to GitHub and
+confirm the CI workflow (`.github/workflows/ci.yml`) goes green on a
+`macos-14` runner, as an independent, repeatable confirmation beyond
+this one local machine.
+
+---
+
 # 12. SESSION CHECKPOINT
 
 **Last completed action:**
-`LICENSE` copied into place from a user-provided file and verified
-correct (674 lines, correct header/footer). `PROJECT_STATE.md` (this
-file) written.
+Confirmed `swift test` (3/3 passing) and `swift run` (launches, no
+crash) on real Apple Silicon hardware. Phase 1 is now fully verified:
+build, tests, and run all confirmed with real evidence, not assumption.
 
 **Current state:**
-The `LibreTunnel/` repository scaffold is structurally complete for
-Phase 1: app shell, `AppCore` module with tests, all governance/ADR/
-documentation files, CI workflow, issue/PR templates, and a correct
-`LICENSE`. Nothing in it has been compiled, run, or tested yet, because
-the authoring environment has no Swift toolchain and is not macOS.
+Phase 1 (native application shell) is **complete and verified**.
+Checkpoints 1 and 2 are both closed. No code changes are pending from
+this verification — everything written matched what was needed.
 
 **Current problem:**
-None blocking delivery. The one open technical risk is that Phase 1 has
-never actually been built — Checkpoints 1 and 2 are not yet verified in
-fact, only in intent. This is disclosed, not hidden.
+None. One minor loose end: not explicitly confirmed whether all five
+individual sidebar stages were clicked through during `swift run`
+testing, versus just the app launching successfully — low risk, noted
+for completeness (Section 9).
 
 **Next exact action:**
-1. Zip the repository and deliver it to the project owner.
-2. Project owner (or the next session, once a real macOS environment is
-   available) runs `swift build && swift test && swift run` and reports
-   the result — pass or fail — so Section 16 can be updated with real
-   data instead of "NOT TESTED."
-3. Once Checkpoints 1–2 are confirmed, proceed to Phase 2 (`GeometryKit`
-   — STL/OBJ import and validation).
+Begin Phase 2: `GeometryKit` (STL/OBJ import and validation), per
+`Documentation/architecture.md`. Optionally, first push this repository
+to GitHub and confirm the CI workflow goes green, as an independent
+confirmation beyond the one local machine tested so far.
 
 **Do not restart completed work unless there is evidence that it is incorrect.**
 
@@ -683,27 +889,31 @@ These rules apply to every AI working on this repository.
 2026-09-06
 
 **Build:**
-NOT TESTED — no Swift toolchain or macOS environment was available in
-the sandbox this scaffold was authored in. This is disclosed
-deliberately rather than assumed away; see Section 11 journal and
-`Documentation/developer-setup.md` for the same caveat in context.
+**PASS** — confirmed on real Apple Silicon hardware (M1, macOS 27 Beta,
+Xcode-beta 27.0) via `swift build`: "Build complete! (10.65 sec)".
 
 **Tests:**
-NOT TESTED — `AppCoreTests` is written but has not been executed.
+**PASS** — `swift test`: 3/3 `AppCoreTests` passing, "Executed 3 tests,
+with 0 failures."
 
 **Application launches:**
-NOT TESTED
+**YES** — `swift run` launches the app; project owner reports "works
+perfect currently, no crashing, fast and clean."
 
 **Major functionality verified:**
-None yet — Phase 1 provides navigation/placeholder UI only, and even
-that has not been run.
+Build system (Swift Package Manager, multi-target structure), the
+`AppCore` module's `AppInfo` logic, and the SwiftUI app shell's launch
+behavior are all confirmed working end-to-end on real hardware. Not
+explicitly confirmed: clicking through all five individual sidebar
+stages (Import/Inspect/Tunnel/Simulate/Analyse) one by one — the app
+launching and running without crashing was confirmed, which exercises
+the initial stage and the navigation machinery, but not necessarily
+every stage individually.
 
 **Known issues:**
-See Section 5, "Known limitations," and Section 9, "Open questions."
+None currently open. See Section 5 for resolved issues and Section 9
+for the one minor open item above.
 
 **Ready for another AI agent to continue:**
-YES — with the explicit condition that the next step (by an AI, the
-project owner, or both) should be running `swift build && swift test &&
-swift run` on real Apple Silicon hardware and recording the actual
-result here, rather than assuming Phase 1 works because it reads
-correctly.
+YES. Phase 1 is genuinely complete and verified. The next session should
+begin Phase 2 (`GeometryKit`) directly, per Section 12.
