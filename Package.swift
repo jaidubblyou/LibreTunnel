@@ -6,12 +6,13 @@ import PackageDescription
 // build is reproducible from the command line, in CI, and in Xcode without
 // any project-file lock-in — see Documentation/adr/0002 and architecture.md.
 //
-// Module map (kept intentionally small in Phase 1; grows one module per phase):
+// Module map (grows one module per phase — see Documentation/architecture.md):
 //   LibreTunnel  — the SwiftUI app shell (executable target)
 //   AppCore      — shared, pure-Swift models/utilities with no UI or OpenFOAM
-//                  dependencies, used by both the app and (later) every other
-//                  module. Introduced now so the multi-target wiring itself
-//                  is proven and tested before real feature modules land.
+//                  dependencies
+//   GeometryKit  — STL/OBJ import and validation (Phase 2). Pure Swift, no
+//                  UI or OpenFOAM dependency, so it's testable without an
+//                  app bundle or a live OpenFOAM install.
 let package = Package(
     name: "LibreTunnel",
     platforms: [
@@ -19,22 +20,32 @@ let package = Package(
     ],
     products: [
         .executable(name: "LibreTunnel", targets: ["LibreTunnel"]),
-        .library(name: "AppCore", targets: ["AppCore"])
+        .library(name: "AppCore", targets: ["AppCore"]),
+        .library(name: "GeometryKit", targets: ["GeometryKit"])
     ],
     targets: [
         .executableTarget(
             name: "LibreTunnel",
-            dependencies: ["AppCore"],
+            dependencies: ["AppCore", "GeometryKit"],
             path: "Sources/LibreTunnel"
         ),
         .target(
             name: "AppCore",
             path: "Sources/AppCore"
         ),
+        .target(
+            name: "GeometryKit",
+            path: "Sources/GeometryKit"
+        ),
         .testTarget(
             name: "AppCoreTests",
             dependencies: ["AppCore"],
             path: "Tests/AppCoreTests"
+        ),
+        .testTarget(
+            name: "GeometryKitTests",
+            dependencies: ["GeometryKit"],
+            path: "Tests/GeometryKitTests"
         )
     ]
 )

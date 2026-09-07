@@ -70,9 +70,15 @@ enum WorkflowStage: String, CaseIterable, Identifiable {
     ///
     /// Kept explicit and centralised so the UI never silently implies more
     /// capability than currently exists (project "no fake functionality"
-    /// policy). Flip to `true` for a given stage only when it is genuinely
-    /// implemented and tested — not when a placeholder merely looks finished.
+    /// policy). "Implemented" here means "has genuine functionality," not
+    /// necessarily "complete" — Import can parse STL files (Phase 2,
+    /// first slice) but doesn't yet validate geometry, support OBJ, or
+    /// show a 3D viewport; `ImportView` is explicit about that narrower
+    /// scope in its own UI text.
     var isImplemented: Bool {
-        false
+        switch self {
+        case .importGeometry: return true
+        case .inspect, .tunnel, .simulate, .analyse: return false
+        }
     }
 }

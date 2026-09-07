@@ -8,12 +8,13 @@ considered done until it's tested — a feature that "looks right" in the
 UI without a passing test behind it is treated as unverified, not
 finished.
 
-## Current coverage (Phase 1)
+## Current coverage (Phase 1 + Phase 2, first slice)
 
 | Module | Test target | What's covered |
 |---|---|---|
 | `AppCore` | `AppCoreTests` | `AppInfo` construction, equality, and its fallback behaviour when run outside an app bundle (`swift test` has no Info.plist) |
-| `LibreTunnel` (app) | — | No logic to unit test yet; it's pure SwiftUI view composition over `WorkflowStage`, which is a plain enum with no branching logic beyond simple lookups |
+| `GeometryKit` | `GeometryKitTests` | `STLImporter`: binary and ASCII parsing, vertex deduplication across shared edges, the binary/ASCII disambiguation edge case (a binary file whose header text happens to start with "solid"), bounding-box computation, and every documented error case (truncated header, triangle-count/file-size mismatch, empty file, malformed ASCII line). Fixtures are built in code (`STLFixtures.swift`) rather than committed binary files, so they're easy to read and modify in review. |
+| `LibreTunnel` (app) | — | `ImportView`/`ImportViewModel` are UI/state glue over `GeometryKit`, which is where the real logic (and its tests) lives; no separate app-level tests yet. `WorkflowStage` remains a plain enum with no branching logic beyond simple lookups. |
 
 Run everything with:
 
@@ -44,5 +45,15 @@ hardware. This is the actual, automated verification of Checkpoint 1
 
 ## Manual testing checklist (grows with each phase)
 
-- [ ] Phase 1: app launches, sidebar navigation switches between all five
-      stages, each shows its placeholder without crashing.
+- [x] Phase 1: app launches, sidebar navigation switches between all five
+      stages, each shows its placeholder without crashing. **Confirmed
+      on real Apple Silicon hardware (2026-09-06)** — app launch and
+      no-crash behavior verified directly; individual clicking through
+      of each of the five stages was not separately itemized in the
+      report, though the app running cleanly makes failure there
+      unlikely.
+- [ ] Phase 2 (slice 1): Import stage accepts a real STL file via the
+      file picker, shows correct vertex/triangle counts and bounding
+      box, and shows an understandable error message for a malformed
+      file. Written and unit-tested at the `GeometryKit` level; not yet
+      exercised end-to-end through the actual UI on real hardware.

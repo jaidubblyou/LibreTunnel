@@ -21,13 +21,15 @@ directly — while keeping every generated case, mesh setting, and log
 fully inspectable.
 
 **Current objective:**
-Phase 1 is complete and verified (build, tests, and app launch all
-confirmed on real Apple Silicon hardware). Next objective: Phase 2 —
-geometry import (STL/OBJ) and validation (`GeometryKit`).
+Phase 2, first slice, is written: STL geometry import via a new
+`GeometryKit` module, wired into a real Import stage UI. Not yet
+verified on real hardware (see Section 16). Remaining Phase 2 slices:
+OBJ import, then geometry validation/repair.
 
 **Project status:**
-`DEVELOPMENT` (Phase 1 of 12 complete and verified — see
-`Documentation/architecture.md` for the full phase list)
+`DEVELOPMENT` (Phase 1 of 12 complete and verified; Phase 2 of 12 in
+progress, first slice written and unit-tested but not yet run on real
+hardware — see `Documentation/architecture.md` for the full phase list)
 
 **Last updated:**
 2026-09-06
@@ -42,7 +44,10 @@ multi-session architecture discussion and initial scaffold build.
 
 ### Functional requirements
 
-- [ ] Drag-and-drop import of STL and OBJ 3D models
+- [x] Drag-and-drop import of STL — **STL only so far**; OBJ not yet
+      implemented. Import currently uses a file picker (`.fileImporter`),
+      not literal drag-and-drop onto the window — that UX refinement is
+      still open, tracked in Section 10.
 - [ ] Geometry inspection/validation in a polished 3D viewport (holes,
       non-manifold edges, inverted normals, duplicate/degenerate geometry,
       disconnected components, unrealistic scale)
@@ -123,6 +128,7 @@ Things this project must **not** do (yet — see `architecture.md`,
 | Rendering: **raw Metal/MetalKit**, not SceneKit/RealityKit (tentative, open to revisiting) | Scientific visualisation (scalar fields, custom colour maps, streamlines, cutting planes) needs shader-level control those higher-level frameworks aren't built for. Not yet implemented or tested — flagged as open to challenge in `architecture.md`. | 2026-09-06 |
 | Benchmark/reference case: OpenFOAM's own **`motorBike` tutorial** | Published, well-understood, ships with OpenCFD, matches the project's external-aerodynamics use case exactly — lets automated pipeline output be checked against known-good behaviour rather than unvalidated in-house geometry. | 2026-09-06 |
 | Contribution model: **DCO sign-off, not a formal CLA** | Keeps contribution barrier low, consistent with the "as accessible as possible" goal. | 2026-09-06 |
+| Geometry representation: **indexed triangle mesh, hand-rolled parsers, no third-party geometry library** | STL/OBJ are simple enough to parse directly; an indexed (deduplicated) mesh is required for later manifoldness/hole/disconnected-component validation, which flat triangle soup can't answer without redoing work. See ADR-0005. | 2026-09-06 |
 
 **Do not reverse an established decision without explicitly discussing why it should change.**
 
@@ -167,12 +173,22 @@ LibreTunnel/
 │   │   ├── LibreTunnelApp.swift
 │   │   ├── ContentView.swift
 │   │   ├── WorkflowStage.swift
-│   │   └── StagePlaceholderView.swift
-│   └── AppCore/                     (shared pure-Swift models)
-│       └── AppInfo.swift
+│   │   ├── StagePlaceholderView.swift
+│   │   ├── ImportView.swift          (Phase 2: real Import stage UI)
+│   │   └── ImportViewModel.swift     (Phase 2: bridges UI to GeometryKit)
+│   ├── AppCore/                     (shared pure-Swift models)
+│   │   └── AppInfo.swift
+│   └── GeometryKit/                 (Phase 2: STL/OBJ import + validation)
+│       ├── TriangleMesh.swift
+│       ├── IndexedMeshBuilder.swift
+│       ├── STLImportError.swift
+│       └── STLImporter.swift
 ├── Tests/
-│   └── AppCoreTests/
-│       └── AppInfoTests.swift
+│   ├── AppCoreTests/
+│   │   └── AppInfoTests.swift
+│   └── GeometryKitTests/
+│       ├── STLFixtures.swift
+│       └── STLImporterTests.swift
 ├── Scripts/
 │   └── build-app-bundle.sh          (release packaging + ad-hoc signing)
 ├── Documentation/
@@ -184,7 +200,8 @@ LibreTunnel/
 │       ├── 0001-project-license.md
 │       ├── 0002-openfoam-runtime-strategy.md
 │       ├── 0003-process-lifecycle-and-progress-reporting.md
-│       └── 0004-code-signing-without-developer-id.md
+│       ├── 0004-code-signing-without-developer-id.md
+│       └── 0005-geometry-representation.md
 └── .github/
     ├── workflows/ci.yml
     ├── ISSUE_TEMPLATE/
@@ -198,9 +215,12 @@ LibreTunnel/
 
 #### Component 1 — App shell
 **Purpose:** SwiftUI window, sidebar navigation across the five workflow
-stages, placeholder content views.
+stages. Import now has real content (`ImportView`/`ImportViewModel`);
+Inspect/Tunnel/Simulate/Analyse remain placeholders.
 **Location:** `Sources/LibreTunnel/`
-**Status:** Implemented, not yet compiled/run (see Section 16).
+**Status:** Import stage implemented, not yet run on real hardware
+(written after the last confirmed-working build — see Section 16).
+Placeholder stages confirmed working on real hardware as of Phase 1.
 
 #### Component 2 — AppCore
 **Purpose:** Shared, pure-Swift models with no UI or OpenFOAM dependency.
@@ -208,12 +228,22 @@ Currently just `AppInfo` (version/build metadata for reproducibility);
 will later also host the cross-cutting `ProcessSupervisor` described in
 ADR-0003.
 **Location:** `Sources/AppCore/`
-**Status:** `AppInfo` implemented with unit tests, not yet compiled/run.
+**Status:** `AppInfo` implemented with unit tests, confirmed passing on
+real hardware.
 
-#### Component 3 — GeometryKit, DomainKit, CaseKit, OpenFOAMRuntime, SolverBridge, ResultsKit, RenderKit, ProjectKit
+#### Component 3 — GeometryKit
+**Purpose:** STL/OBJ import, validation, repair. See ADR-0005 for the
+representation/parser-strategy decisions behind it.
+**Location:** `Sources/GeometryKit/`
+**Status:** `TriangleMesh` (indexed mesh model) and `STLImporter`
+(binary + ASCII, vertex dedup, descriptive errors) implemented with unit
+tests (`GeometryKitTests`) — written, not yet run on real hardware.
+OBJ import and validation/repair not started.
+
+#### Component 4 — DomainKit, CaseKit, OpenFOAMRuntime, SolverBridge, ResultsKit, RenderKit, ProjectKit
 **Purpose:** See `Documentation/architecture.md` module table.
 **Location:** Not yet created.
-**Status:** Not started — planned for Phases 2–8 and 14 respectively.
+**Status:** Not started — planned for Phases 4–8 and 14 respectively.
 
 ---
 
@@ -229,18 +259,32 @@ ADR-0003.
       honest placeholders — **verified on real Apple Silicon hardware**
       (M1, macOS 27 Beta, Xcode-beta 27.0): `swift build` passes,
       `swift test` passes (3/3, `AppCoreTests`), `swift run` launches
-      the app with no crash. Checkpoints 1 and 2 both genuinely closed,
-      not just written.
+      the app with no crash, all five sidebar stages confirmed working
+      by the project owner. Checkpoints 1 and 2 both genuinely closed.
 - [x] `AppCore.AppInfo` with unit tests — passing for real (3/3)
+- [x] Phase 2, slice 1: `GeometryKit` module — `TriangleMesh` (indexed
+      mesh model, ADR-0005), `STLImporter` (binary + ASCII, vertex
+      dedup, robust binary/ASCII disambiguation, descriptive errors),
+      10 unit tests (`GeometryKitTests`). Import workflow stage wired to
+      real functionality (`ImportView`/`ImportViewModel`): file picker,
+      parse summary, error display. **Written and unit-test-covered,
+      not yet run on real hardware** — see Section 16.
 
 ### In progress
 
-- [ ] None — Phase 1 is complete. Phase 2 (`GeometryKit`) has not
-      started yet.
+- [ ] Phase 2, remaining slices: OBJ import, then geometry validation
+      (holes, non-manifold edges, inverted normals, degenerate
+      triangles, disconnected components, unrealistic scale) and repair.
 
 ### Not started
 
-- [ ] Phase 2: STL/OBJ geometry import and validation (`GeometryKit`)
+- [ ] Phase 2 UX refinement: literal drag-and-drop of a file onto the
+      window, rather than only a "Choose File…" picker button. The
+      original functional requirement says "drag in a 3D model"; the
+      current implementation satisfies the import/parsing part of that
+      requirement but not the literal drag-and-drop interaction. Tracked
+      honestly rather than silently claiming the requirement is fully
+      met — see Section 2.
 - [ ] Phase 3 onward: see `Documentation/architecture.md`
 
 ### Known bugs
@@ -248,6 +292,7 @@ ADR-0003.
 | Bug | Severity | Status | Notes |
 |---|---|---|---|
 | `swift build` failed with "plugin for module 'SwiftUIMacros' not found" (and `PreviewsMacros`) | Was blocking (Checkpoint 1) | **Resolved** | Confirmed root cause: `xcode-select` was pointed at the standalone Command Line Tools, which don't bundle the `SwiftUIMacros`/`PreviewsMacros` compiler plugins. The Mac in question has `Xcode-beta.app` (matching its macOS 27 Beta), not `Xcode.app`. Fixed with `sudo xcode-select --switch /Applications/Xcode-beta.app/Contents/Developer` + `sudo xcodebuild -license accept`. Confirmed via `xcodebuild -version` (Xcode 27.0) and `xcrun --sdk macosx --show-sdk-version` (27.0) matching exactly — no SDK mismatch. `swift build` then succeeded: "Build complete! (10.65 sec)". |
+| `STLImporter.isLikelyBinary` misclassified short, valid ASCII STL files as binary, e.g. a minimal empty-solid file (`"solid empty\nendsolid empty"`, 26 bytes). Caught by `testThrowsOnEmptyASCIIFile` failing on real hardware: expected `.emptyFile`, got `.truncatedBinaryHeader`. | Was a real, test-caught bug (Phase 2 slice 1) | **Resolved** | Root cause: the length check (`bytes.count >= 84`) ran *before* the "solid" prefix check, so any file under 84 bytes was assumed binary regardless of content — wrong whenever the file legitimately starts with "solid" and is just short (STL's empty/near-empty case, in particular). Fixed by checking the "solid" prefix first: files not starting with "solid" are binary regardless of length; files starting with "solid" but under 84 bytes cannot possibly be valid binary STL (which requires at least an 80-byte header + 4-byte count) and are therefore ASCII; only files starting with "solid" AND at least 84 bytes go through the existing size-formula disambiguation. Verified by manual trace against all 10 `STLImporterTests` cases; not yet re-run on real hardware — see Section 16. This is a genuine example of the test-first process working: the bug was real, was caught by a test on real hardware (not by review), and would not have been caught by `swift build` succeeding alone. |
 
 ### Known limitations
 
@@ -312,32 +357,42 @@ Section 16 with the real result before proceeding to Phase 2.
 ### Tests that pass
 
 - [x] `swift build` — **passes** on real Apple Silicon hardware
-      (M1, macOS 27 Beta, Xcode-beta 27.0): "Build complete! (10.65 sec)".
+      (M1, macOS 27 Beta, Xcode-beta 27.0), including the new
+      `GeometryKit` module: "Build complete! (6.37 sec)".
 - [x] `swift test` (`AppCoreTests`) — **passes**, 3/3, confirmed on real
-      hardware: `testCurrentFallsBackToDevelopmentDefaultsOutsideAnAppBundle`,
-      `testDescribingFormatsAllFields`, `testEquality`. "Executed 3
-      tests, with 0 failures."
+      hardware.
+- [x] `swift test` (`GeometryKitTests`) — **9/10 passed** on first real
+      run; 1 failure found (`testThrowsOnEmptyASCIIFile`) and root-caused
+      to a genuine bug in `STLImporter.isLikelyBinary` (see Known Bugs,
+      Section 5). Fix written and verified by manual trace against all
+      10 cases; **not yet re-run on real hardware** — see Section 16.
 
 ### Tests that fail
 
-- [ ] None known.
+- [ ] None currently expected — the one known failure
+      (`testThrowsOnEmptyASCIIFile`) has a fix written, pending
+      re-verification on real hardware.
 
 ### Manual testing performed
 
 - [x] `git init && git add -A && git commit -s` — succeeded.
-- [x] `swift build` — succeeded.
-- [x] `swift test` — succeeded, 3/3.
-- [x] `swift run` — app launched, no crash, reported "works perfect...
-      fast and clean." Confirmation of all five individual sidebar
-      stages being clicked through specifically is pending — see
-      Section 9.
+- [x] `swift build` — succeeded, Phase 1 and Phase 2 slice 1 both.
+- [x] `swift test` — Phase 1 (`AppCoreTests`): 3/3 pass. Phase 2 slice 1
+      (`GeometryKitTests`): 9/10 passed on first run, 1 real bug found
+      and fixed (pending re-verification).
+- [x] `swift run` — app launched twice (Phase 1 and after adding
+      Phase 2 slice 1's `Package.swift` changes), no crash both times.
+- [ ] Import stage UI end-to-end with a real STL file — not yet
+      performed; blocked behind confirming the `isLikelyBinary` fix
+      first.
 
 ### Last known working state
 
-Repository builds, tests, and runs successfully via `swift build` /
-`swift test` / `swift run` on real Apple Silicon hardware (M1, macOS 27
-Beta, Xcode-beta 27.0) as of 2026-09-06. Phase 1 is genuinely verified,
-not just written.
+Phase 1 fully confirmed on real hardware. Phase 2 slice 1: build passes
+and 9/10 tests passed on first real run; the 1 failure was a genuine bug
+(not a toolchain issue), now fixed in source but not yet re-verified.
+Treat `STLImporter` as **not yet fully verified** until `swift test`
+is re-run and all 10 `GeometryKitTests` pass.
 
 ---
 
@@ -361,14 +416,12 @@ not just written.
    `CODE_OF_CONDUCT.md` enforcement? Both currently note this as
    unresolved rather than guessing.
 3. ~~Has Phase 1 actually been confirmed to build and run on real Apple
-   Silicon hardware yet?~~ **Resolved: yes.** `swift build`, `swift
-   test` (3/3 passing), and `swift run` (launches, no crash) all
-   confirmed on real hardware as of 2026-09-06. One small residual: it's
-   not explicitly confirmed that all five individual sidebar stages
-   were clicked through during the `swift run` check, only that the app
-   launched and ran without crashing — low-risk given how simple the
-   placeholder views are, but noted for completeness rather than
-   silently assumed.
+   Silicon hardware yet?~~ **Resolved: yes, fully.** `swift build`,
+   `swift test` (3/3 passing), and `swift run` all confirmed on real
+   hardware as of 2026-09-06. The project owner also explicitly
+   confirmed clicking through all five sidebar stages individually,
+   resolving the earlier minor loose end about whether that had been
+   checked specifically versus just the app launching.
 4. Is the project owner's Mac running only Xcode Command Line Tools, or
    is full Xcode.app also installed? `xcode-select -p` and the presence
    of `/Applications/Xcode.app` will resolve this. Given the SDK path in
@@ -382,6 +435,15 @@ not just written.
    against a beta OS/toolchain widens the range of toolchain-level
    issues (like the one just hit) that have nothing to do with this
    project's own code.
+6. Has Phase 2 slice 1 (`GeometryKit`/STL import) been confirmed to
+   build and pass its tests on real hardware yet? (As of this writing:
+   **no** — written and reasoned through carefully, including the known
+   binary/ASCII STL ambiguity edge case, but not yet compiled or run
+   anywhere, since the authoring environment has no Swift toolchain.
+   Given Phase 1's real build surfaced a genuine toolchain issue neither
+   the author nor a naive review would have caught by reading code
+   alone, this code should be treated with the same caution until
+   `swift build && swift test` are actually run on it.)
 
 **Do not silently guess answers to important open questions.**
 
@@ -391,14 +453,29 @@ not just written.
 
 ### Priority 1 — Critical
 
-- [ ] Verify Phase 1 builds and runs on real Apple Silicon hardware
-      (`swift build`, `swift test`, `swift run`), or confirm via a green
-      CI run, and update Section 16 accordingly.
+- [ ] Re-run `swift test` after the `isLikelyBinary` fix and confirm all
+      10 `GeometryKitTests` plus 3 `AppCoreTests` pass (13 total).
+      Update Section 16 with the real result.
+- [ ] Repo cleanup: remove the stray `testing.md` at the repository
+      root (the real one lives at `Documentation/testing.md`; a
+      duplicate ended up untracked at the root, likely from how a file
+      was saved locally) and remove the committed
+      `LibreTunnel-phase2-slice1.zip` from the working tree (now
+      covered by `.gitignore` going forward, but the existing file on
+      disk should be deleted manually — `.gitignore` doesn't retroactively
+      untrack or delete already-present files).
 
 ### Priority 2 — Important
 
-- [ ] Begin Phase 2: `GeometryKit` (STL/OBJ import and validation).
-- [ ] Resolve open questions 1–2 above (repo location, security contact).
+- [ ] Once verified, continue Phase 2: OBJ import, then geometry
+      validation/repair (holes, non-manifold edges, inverted normals,
+      degenerate triangles, disconnected components, unrealistic scale).
+- [ ] Resolve open questions 1–2, 5–6 above (repo location, security
+      contact, beta-OS intentionality, Phase 2 verification).
+- [ ] Consider adding literal drag-and-drop onto the Import view (in
+      addition to the current file-picker button), to fully satisfy the
+      original "drag in a 3D model" requirement — see Section 5, "Not
+      started."
 
 ### Priority 3 — Nice to have
 
@@ -794,31 +871,197 @@ confirm the CI workflow (`.github/workflows/ci.yml`) goes green on a
 `macos-14` runner, as an independent, repeatable confirmation beyond
 this one local machine.
 
+## [2026-09-06 07:00] — Phase 2, slice 1: STL geometry import (GeometryKit)
+
+**Action:**
+Implemented the first slice of Phase 2: a new `GeometryKit` module with
+an indexed-mesh model and a binary/ASCII STL importer, plus real Import
+stage UI wiring in the app (file picker, parse summary, error display).
+Wrote a new ADR (0005) for the mesh representation and parser-strategy
+decisions this required.
+
+**Reason:**
+Phase 2 = geometry import and validation, per the agreed roadmap.
+Deliberately scoped to STL only for this slice — not OBJ, not
+validation/repair — per the project's "smallest sensible version,
+test before moving to the next dependent stage" principle, especially
+given Phase 1 just demonstrated that untested assumptions about this
+codebase can hide real problems (the SwiftUI macro plugin issue).
+
+**Changes:**
+- Added `Sources/GeometryKit/`: `TriangleMesh.swift` (indexed mesh
+  model), `IndexedMeshBuilder.swift` (shared vertex-dedup logic used by
+  every future importer), `STLImportError.swift`, `STLImporter.swift`
+  (binary + ASCII STL, robust binary/ASCII disambiguation for the
+  well-known "solid-prefixed binary header" ambiguity).
+- Added `Tests/GeometryKitTests/`: `STLFixtures.swift` (builds valid and
+  broken STL byte content in code, no external fixture files needed),
+  `STLImporterTests.swift` (10 tests: binary parsing, ASCII parsing,
+  vertex deduplication in both formats, the solid-prefix ambiguity edge
+  case, bounding-box computation, and all four documented error cases).
+- Added `Sources/LibreTunnel/ImportView.swift` and `ImportViewModel.swift`:
+  real Import stage content (file picker via `.fileImporter`, background
+  parsing via `Task.detached` so large files don't block the UI thread,
+  parse-result summary, understandable error display).
+- Updated `WorkflowStage.swift`: `.importGeometry.isImplemented` is now
+  `true` (the other four stages remain `false`).
+- Updated `ContentView.swift`: routes `.importGeometry` to `ImportView`
+  instead of `StagePlaceholderView`; the other four stages are
+  unaffected.
+- Updated `Package.swift`: added `GeometryKit` library target and
+  `GeometryKitTests` test target; `LibreTunnel` executable now depends
+  on `GeometryKit`.
+- Updated `Documentation/architecture.md`, `Documentation/testing.md`,
+  `CHANGELOG.md` to match.
+
+**Files affected:**
+See list above; also this file (Sections 1, 2, 3, 4, 5, 9, 10, this
+entry, 12, 16).
+
+**Result:**
+Code written, internally reviewed (brace/paren balance checked, import
+statements re-checked, `Package.swift` target paths confirmed against
+actual directories). Not yet compiled or run anywhere — the authoring
+environment has no Swift toolchain. Marked accordingly rather than
+assumed working — see Section 16 and open question 6 (Section 9).
+
+**Tests:**
+10 new tests written in `GeometryKitTests`, covering the cases listed
+above. Not yet executed on real hardware.
+
+**Problems discovered:**
+None in review, but "discovered nothing in review" is exactly the state
+Phase 1 was in before the real build surfaced a genuine toolchain issue
+— so this is explicitly not being treated as equivalent to "confirmed
+working."
+
+One real, non-toolchain gap was found and disclosed rather than glossed
+over: the original functional requirement is "drag in a 3D model," but
+what's implemented is a file-picker button (`.fileImporter`), not
+literal drag-and-drop onto the window. The import/parsing logic itself
+satisfies the underlying need; the specific drag-and-drop interaction
+does not yet exist. Logged as a tracked, not-started item (Section 5)
+rather than silently marking the requirement complete.
+
+**Decision / reasoning:**
+Kept `GeometryKit` fully synchronous and free of SwiftUI/threading
+concerns (see its module documentation) — the app's `ImportViewModel` is
+responsible for keeping the UI responsive during large-file parsing, via
+`Task.detached`. This keeps `GeometryKit` simple to unit-test and reuse
+later (e.g., a hypothetical command-line tool or a batch-import feature
+would use the exact same importer with no UI dependency).
+
+**Next step:**
+Project owner runs `swift build && swift test` on real hardware. If
+`GeometryKitTests` pass, manually exercise the Import stage UI with a
+real STL file and a deliberately broken one. Report results either way
+so Section 16 can reflect reality, then continue Phase 2 with OBJ import.
+
+## [2026-09-07 08:00] — Real bug found on hardware: STL binary/ASCII disambiguation, fixed
+
+**Action:**
+Project owner merged Phase 2 slice 1 into the existing repo, ran
+`swift build` (passed) and `swift test`. `GeometryKitTests` reported
+9/10 passing, 1 failure: `testThrowsOnEmptyASCIIFile` expected
+`.emptyFile` but got `.truncatedBinaryHeader`.
+
+**Reason:**
+This is exactly the verification step flagged as pending in the
+previous journal entry and Section 16 — run the real tests before
+trusting review alone.
+
+**Changes:**
+- Root-caused the failure to `STLImporter.isLikelyBinary`: the file-size
+  check (`bytes.count >= 84`) ran before the "solid" prefix check, so
+  any file under 84 bytes was assumed binary regardless of content.
+  This is wrong whenever a file legitimately starts with "solid" and is
+  simply short — exactly the empty/near-empty ASCII STL case the failing
+  test exercised.
+- Fixed by reordering: check the "solid" prefix first. Not starting with
+  "solid" → binary, regardless of length. Starting with "solid" but
+  under 84 bytes → cannot possibly be valid binary STL (which requires
+  at least an 80-byte header plus a 4-byte count), so it must be ASCII.
+  Starting with "solid" and at least 84 bytes → disambiguate via the
+  existing size-formula check, unchanged.
+- Verified the fix by manual trace against all 10 `STLImporterTests`
+  cases (documented in code comments and in this entry) — not yet
+  re-run on real hardware.
+- Corrected a separate, smaller error: the test count was mis-stated as
+  9 in `PROJECT_STATE.md` and the previous journal entry; it's actually
+  10. Fixed throughout this file.
+- Added `*.zip` to `.gitignore` and flagged (not yet fixed — project
+  owner's action) that a stray `testing.md` at the repo root and the
+  delivered `LibreTunnel-phase2-slice1.zip` both appear as untracked
+  files in `git status` and should be removed before the next commit —
+  see Section 10.
+
+**Files affected:**
+- `Sources/GeometryKit/STLImporter.swift` (the fix)
+- `.gitignore`
+- This file (test count correction, this entry, Sections 5, 7, 12, 16)
+
+**Result:**
+Fix written and manually verified by trace, not yet compiled or tested
+on real hardware.
+
+**Tests:**
+Real hardware run (before fix): 9/10 `GeometryKitTests` passed, 3/3
+`AppCoreTests` passed, `swift build` passed. Not yet re-run since the
+fix.
+
+**Problems discovered:**
+The `isLikelyBinary` ordering bug above — a genuine defect, not a
+toolchain issue, found only because a real test was actually executed.
+Also: stray `testing.md` at repo root and a committed zip archive,
+likely artifacts of how files were merged/saved locally rather than a
+project defect — flagged for cleanup, not treated as a code problem.
+
+**Decision / reasoning:**
+Did not weaken or remove the test that caught this — the test was
+correct; the implementation was wrong. This is noted explicitly because
+the opposite instinct (loosen the test to match the buggy behavior) is
+exactly the kind of shortcut the project's "no fake functionality" and
+"test first" principles exist to prevent.
+
+**Next step:**
+Project owner re-runs `swift test`, confirms all 10 `GeometryKitTests`
+plus 3 `AppCoreTests` pass (13 total), cleans up the stray root
+`testing.md` and committed zip per Section 10, then manually tests the
+Import stage UI with a real STL file before this slice is considered
+closed.
+
 ---
 
 # 12. SESSION CHECKPOINT
 
 **Last completed action:**
-Confirmed `swift test` (3/3 passing) and `swift run` (launches, no
-crash) on real Apple Silicon hardware. Phase 1 is now fully verified:
-build, tests, and run all confirmed with real evidence, not assumption.
+Fixed a real bug (`STLImporter.isLikelyBinary` misclassifying short
+valid ASCII files as binary) found by `GeometryKitTests` on real
+hardware — 9/10 tests passed, 1 genuine failure, root-caused and fixed.
+Also corrected a test-count documentation error (10, not 9) and flagged
+two repo-hygiene items (stray root `testing.md`, committed zip).
 
 **Current state:**
-Phase 1 (native application shell) is **complete and verified**.
-Checkpoints 1 and 2 are both closed. No code changes are pending from
-this verification — everything written matched what was needed.
+Phase 1 remains fully verified. Phase 2 slice 1: build passes on real
+hardware, and 9 of 10 `GeometryKitTests` passed on the first real run.
+The fix for the 10th is written and verified by manual trace, but
+**not yet re-run on real hardware** — do not treat this as closed until
+it is.
 
 **Current problem:**
-None. One minor loose end: not explicitly confirmed whether all five
-individual sidebar stages were clicked through during `swift run`
-testing, versus just the app launching successfully — low risk, noted
-for completeness (Section 9).
+None blocking, but explicitly unresolved: the `isLikelyBinary` fix needs
+a real `swift test` run to confirm it actually works, not just that the
+trace-through looks right — the previous bug existed despite looking
+fine in review, which is exactly why this distinction matters.
 
 **Next exact action:**
-Begin Phase 2: `GeometryKit` (STL/OBJ import and validation), per
-`Documentation/architecture.md`. Optionally, first push this repository
-to GitHub and confirm the CI workflow goes green, as an independent
-confirmation beyond the one local machine tested so far.
+1. Project owner re-runs `swift test`; confirm 13/13 total pass (3
+   `AppCoreTests` + 10 `GeometryKitTests`).
+2. Delete the stray root `testing.md` and the committed
+   `LibreTunnel-phase2-slice1.zip` from the working tree.
+3. Manually test the Import stage with a real STL file (and ideally a
+   deliberately broken one) before considering Phase 2 slice 1 closed.
+4. Commit, report results, then continue Phase 2 with OBJ import.
 
 **Do not restart completed work unless there is evidence that it is incorrect.**
 
@@ -886,34 +1129,52 @@ These rules apply to every AI working on this repository.
 # 16. LAST VERIFIED STATE
 
 **Date:**
-2026-09-06
+2026-09-07
 
 **Build:**
-**PASS** — confirmed on real Apple Silicon hardware (M1, macOS 27 Beta,
-Xcode-beta 27.0) via `swift build`: "Build complete! (10.65 sec)".
+**PASS for both Phase 1 and Phase 2 slice 1** — confirmed on real Apple
+Silicon hardware (M1, macOS 27 Beta, Xcode-beta 27.0). Phase 1:
+"Build complete! (10.65 sec)". Phase 2 slice 1 (including the new
+`GeometryKit` module): "Build complete! (6.37 sec)".
 
 **Tests:**
-**PASS** — `swift test`: 3/3 `AppCoreTests` passing, "Executed 3 tests,
-with 0 failures."
+**PASS for Phase 1** — `swift test`: 3/3 `AppCoreTests` passing.
+**9/10 PASS for Phase 2 slice 1 on first real run** — `GeometryKitTests`:
+9 of 10 passed; 1 genuine bug found (`testThrowsOnEmptyASCIIFile`,
+traced to `STLImporter.isLikelyBinary` misclassifying short valid ASCII
+files as binary — see Section 5, Known Bugs). Fix written and verified
+by manual trace against all 10 cases; **not yet re-run on real
+hardware**. Do not mark this PASS until it actually is.
 
 **Application launches:**
-**YES** — `swift run` launches the app; project owner reports "works
-perfect currently, no crashing, fast and clean."
+**YES, for the Phase 1 shell, fully confirmed** — `swift run` launches
+the app; project owner confirmed clicking through all five sidebar
+stages individually with no crash. **NOT YET RE-CONFIRMED** for the
+Import stage's real content (`ImportView`) specifically — the app has
+been rebuilt and run since `ImportView` was added, but end-to-end manual
+testing (pick a real STL file, confirm the summary; try a broken file,
+confirm the error) has not yet been done.
 
 **Major functionality verified:**
 Build system (Swift Package Manager, multi-target structure), the
-`AppCore` module's `AppInfo` logic, and the SwiftUI app shell's launch
-behavior are all confirmed working end-to-end on real hardware. Not
-explicitly confirmed: clicking through all five individual sidebar
-stages (Import/Inspect/Tunnel/Simulate/Analyse) one by one — the app
-launching and running without crashing was confirmed, which exercises
-the initial stage and the navigation machinery, but not necessarily
-every stage individually.
+`AppCore` module's `AppInfo` logic, and the SwiftUI app shell's launch/
+navigation behavior are all confirmed working end-to-end on real
+hardware (Phase 1). `GeometryKit`'s STL import (Phase 2, slice 1) is
+implemented, builds on real hardware, and passed 9/10 of its own tests
+on the first real run — the 10th failure was a genuine, now-fixed bug,
+not a false alarm. Treat the fix as unverified until `swift test` is
+re-run and shows 13/13 passing.
 
 **Known issues:**
-None currently open. See Section 5 for resolved issues and Section 9
-for the one minor open item above.
+None currently open for Phase 1. Phase 2 slice 1: one bug found and
+fixed (Section 5), pending re-verification; two minor repo-hygiene
+items pending cleanup (Section 10). See Section 9, open question 6, for
+the broader Phase 2 slice 1 verification status.
 
 **Ready for another AI agent to continue:**
-YES. Phase 1 is genuinely complete and verified. The next session should
-begin Phase 2 (`GeometryKit`) directly, per Section 12.
+YES, with the explicit condition that Phase 2 slice 1 is **written, not
+verified**. The next session (or the project owner) should run
+`swift build && swift test` before treating `GeometryKit`'s STL import
+as working, and should not assume it's fine just because Phase 1 was —
+Phase 1's own history in this file is a direct example of review-only
+confidence turning out to be insufficient.

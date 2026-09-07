@@ -31,7 +31,12 @@ struct ContentView: View {
             .listStyle(.sidebar)
         } detail: {
             if let selectedStage {
-                StagePlaceholderView(stage: selectedStage)
+                switch selectedStage {
+                case .importGeometry:
+                    ImportView()
+                default:
+                    StagePlaceholderView(stage: selectedStage)
+                }
             } else {
                 Text("Select a stage to begin.")
                     .foregroundStyle(.secondary)
