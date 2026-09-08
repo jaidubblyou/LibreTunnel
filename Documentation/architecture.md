@@ -43,7 +43,7 @@ boundary and code review, not a one-time choice.
 |---|---|---|
 | `LibreTunnel` (app) | SwiftUI shell, navigation, view models | Phase 1 shell in place |
 | `AppCore` | Shared models with no UI/OpenFOAM dependency (`AppInfo`, later `ProcessSupervisor`) | `AppInfo` implemented |
-| `GeometryKit` | STL/OBJ import, validation, repair | STL import implemented and tested (binary + ASCII, vertex dedup). OBJ import and validation/repair not yet started (Phase 2, remaining slices) |
+| `GeometryKit` | STL/OBJ import, validation, repair | STL and OBJ import implemented and tested (binary + ASCII STL; OBJ with fan triangulation for n-gons and geometric normal computation). Validation/repair not yet started (Phase 2, final slice) |
 | `DomainKit` | Wind-tunnel domain sizing, blockage-ratio logic | Not started (Phase 4) |
 | `CaseKit` | OpenFOAM case-dictionary generation | Not started (Phase 6–7) |
 | `OpenFOAMRuntime` | Detection/provisioning of the OpenFOAM runtime | Not started (Phase 5) |

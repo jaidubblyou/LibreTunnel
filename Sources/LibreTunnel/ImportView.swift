@@ -15,7 +15,7 @@ import UniformTypeIdentifiers
 /// The Import stage's real content.
 ///
 /// This is the first workflow stage to move beyond `StagePlaceholderView`
-/// — it can genuinely import an STL file and show what was parsed.
+/// — it can genuinely import an STL or OBJ file and show what was parsed.
 /// Geometry validation, repair, OBJ support, and the 3D viewport are
 /// still not implemented; this view says so explicitly rather than
 /// implying more than exists, per the project's "no fake functionality"
@@ -24,8 +24,8 @@ struct ImportView: View {
     @State private var viewModel = ImportViewModel()
     @State private var isPickerPresented = false
 
-    private var stlContentType: UTType {
-        UTType(filenameExtension: "stl") ?? .data
+    private var supportedContentTypes: [UTType] {
+        [UTType(filenameExtension: "stl"), UTType(filenameExtension: "obj")].compactMap { $0 }
     }
 
     var body: some View {
@@ -45,13 +45,13 @@ struct ImportView: View {
         .padding()
         .fileImporter(
             isPresented: $isPickerPresented,
-            allowedContentTypes: [stlContentType],
+            allowedContentTypes: supportedContentTypes,
             allowsMultipleSelection: false
         ) { result in
             switch result {
             case .success(let urls):
                 if let url = urls.first {
-                    viewModel.importSTL(from: url)
+                    viewModel.importGeometry(from: url)
                 }
             case .failure(let error):
                 viewModel.reportPickerFailure(error)
@@ -67,11 +67,11 @@ struct ImportView: View {
             Text("Import a 3D Model")
                 .font(.title2)
                 .bold()
-            Text("STL files are supported. OBJ support is planned — see the roadmap.")
+            Text("STL and OBJ files are supported.")
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 360)
-            Button("Choose STL File…") {
+            Button("Choose File…") {
                 isPickerPresented = true
             }
         }

@@ -71,3 +71,35 @@ indexed vertices.
   regression here, but it's a constraint worth remembering if OBJ import
   (which can carry per-vertex normals) needs to represent hard edges
   later.
+
+## Amendment (Phase 2, slice 2 — OBJ import)
+
+OBJ's native format is already indexed (a `v` list plus `f` lines
+referencing it by index), unlike STL's flat triangle soup. Two
+decisions made when implementing `OBJImporter`, extending this ADR
+rather than superseding it:
+
+1. **`OBJImporter` still routes through the same `IndexedMeshBuilder`
+   dedup pass as `STLImporter`**, even though OBJ is already indexed.
+   This keeps vertex-welding behavior uniform and robust regardless of
+   how well a given exporter deduplicated its own output, and costs
+   nothing extra given decision 2 below.
+2. **`TriangleMesh.faceNormals` is always computed geometrically from
+   vertex positions, for both formats** — OBJ's `vn` (per-vertex normal)
+   data is parsed past but never used. This keeps "what does a face
+   normal mean" consistent regardless of source format, and is also the
+   *more correct* choice for this application's purposes: geometry
+   *validation* (a later slice of this phase) needs the true geometric
+   normal to detect things like inverted normals, not an author's
+   stylized shading normal. Since per-vertex normal data is already
+   being discarded, there's no cost to also discarding OBJ's
+   position-splitting that exporters typically use only to support
+   different `vn` values at "the same" position for hard-edge shading —
+   decision 1's uniform dedup doesn't lose anything decision 2 wasn't
+   already giving up.
+3. **Polygon faces (more than 3 vertices) are fan-triangulated** from
+   their first vertex, which is correct for convex, planar faces but
+   not guaranteed correct for concave ones. Documented in
+   `OBJImporter`'s own comments; not addressed with a more robust
+   triangulation algorithm (e.g. ear clipping) unless real imported
+   geometry shows it's needed — per "prefer simple, explicit design."

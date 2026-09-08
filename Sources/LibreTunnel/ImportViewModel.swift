@@ -39,14 +39,14 @@ final class ImportViewModel {
 
     private(set) var state: State = .idle
 
-    func importSTL(from url: URL) {
+    func importGeometry(from url: URL) {
         let fileName = url.lastPathComponent
         state = .importing(fileName: fileName)
 
         Task {
             do {
                 let mesh = try await Task.detached(priority: .userInitiated) {
-                    try STLImporter.importMesh(from: url)
+                    try GeometryImporter.importMesh(from: url)
                 }.value
 
                 let box = mesh.boundingBox

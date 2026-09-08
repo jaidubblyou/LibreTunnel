@@ -10,6 +10,26 @@
 // (at your option) any later version. See LICENSE for the full text.
 
 import SwiftUI
+import AppKit
+
+/// Explicitly claims "regular app" status (Dock icon, Cmd+Tab presence,
+/// menu bar) on launch.
+///
+/// This is a no-op once the app is packaged as a real `.app` bundle
+/// (`Scripts/build-app-bundle.sh`) and launched normally — a bundled,
+/// non-`LSUIElement` app already gets `.regular` by default. It matters
+/// specifically for `swift run` during development: without a bundle,
+/// macOS doesn't reliably give the bare executable full app treatment,
+/// so the window works (visible in Mission Control, on the desktop) but
+/// no Dock icon appears. See `Documentation/developer-setup.md` for the
+/// full explanation — this was a real question during Phase 2 testing,
+/// not a hypothetical.
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate()
+    }
+}
 
 /// Application entry point.
 ///
@@ -19,6 +39,8 @@ import SwiftUI
 /// exists yet — see Documentation/architecture.md for the phased roadmap.
 @main
 struct LibreTunnelApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
     var body: some Scene {
         WindowGroup {
             ContentView()

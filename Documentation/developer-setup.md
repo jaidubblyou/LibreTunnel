@@ -30,6 +30,18 @@ This launches the app shell directly. You can also open `Package.swift`
 in Xcode (File → Open, select `Package.swift`) and run the `LibreTunnel`
 scheme to get SwiftUI previews and the debugger.
 
+**A note on the Dock icon:** running via `swift run` produces a bare
+executable, not a real `.app` bundle recognized by LaunchServices. The
+app's `AppDelegate` explicitly claims regular-app status on launch
+(`NSApp.setActivationPolicy(.regular)`), so you should see a normal
+Dock icon and Cmd+Tab presence even in this dev-run mode — but if it's
+ever missing, that's a known, harmless quirk of unbundled executables,
+not a sign the app failed to launch. Check Mission Control or the
+desktop; the window is very likely there. It's a non-issue once the app
+is packaged via `Scripts/build-app-bundle.sh` and opened normally,
+since a real bundle gets `.regular` by default with no extra code
+needed.
+
 ## Test
 
 ```bash
