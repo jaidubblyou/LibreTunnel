@@ -39,6 +39,18 @@ final class ImportViewModel {
 
     private(set) var state: State = .idle
 
+    /// Explicit and `nonisolated` so this type can be constructed from a
+    /// non-isolated context — specifically, a SwiftUI View's
+    /// `@State private var viewModel = ImportViewModel()` property
+    /// initializer, which the compiler does not treat as main-actor
+    /// isolated even though the view itself always runs on the main
+    /// thread. Without this, the class's implicit (main-actor-isolated,
+    /// because the class is `@MainActor`) synthesized `init()` can't be
+    /// called from that context. Safe here because the only thing this
+    /// initializer does is apply `state`'s own default value
+    /// (`= .idle`), which touches no actor-isolated data.
+    nonisolated init() {}
+
     func importGeometry(from url: URL) {
         let fileName = url.lastPathComponent
         state = .importing(fileName: fileName)

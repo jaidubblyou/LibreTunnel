@@ -297,6 +297,7 @@ extension). Validation/repair not started.
 
 | Bug | Severity | Status | Notes |
 |---|---|---|---|
+| `ImportViewModel`'s implicit `init()` is main-actor-isolated (class is `@MainActor`), but `ImportView`'s `@State private var viewModel = ImportViewModel()` constructs it from a non-isolated property-initializer context. Compiled fine locally (Swift 6.4 beta) but **failed CI**: "call to main actor-isolated initializer 'init()' in a synchronous nonisolated context" (Xcode 15.4, Swift 5.10). | Was blocking (GitHub Actions CI, `build-and-test`) | **Fixed, not yet re-confirmed** | This is the inverse of every prior toolchain issue: the code was **more permissive on the newer beta compiler** and correctly rejected by the older, stable Swift 5.10 — a genuine portability gap the beta toolchain was masking, not a false positive from CI. Fixed with an explicit `nonisolated init() {}` on `ImportViewModel`, the standard pattern for constructing a `@MainActor` type from a non-isolated context; safe here since the initializer only applies `state`'s own default value, touching no actor-isolated data. Not yet confirmed by a green CI run or a local build on the older-compiler side of this gap. |
 | `swift build` failed with "plugin for module 'SwiftUIMacros' not found" (and `PreviewsMacros`) | Was blocking (Checkpoint 1) | **Resolved** | Confirmed root cause: `xcode-select` was pointed at the standalone Command Line Tools, which don't bundle the `SwiftUIMacros`/`PreviewsMacros` compiler plugins. The Mac in question has `Xcode-beta.app` (matching its macOS 27 Beta), not `Xcode.app`. Fixed with `sudo xcode-select --switch /Applications/Xcode-beta.app/Contents/Developer` + `sudo xcodebuild -license accept`. Confirmed via `xcodebuild -version` (Xcode 27.0) and `xcrun --sdk macosx --show-sdk-version` (27.0) matching exactly — no SDK mismatch. `swift build` then succeeded: "Build complete! (10.65 sec)". |
 | `STLImporter.isLikelyBinary` misclassified short, valid ASCII STL files as binary, e.g. a minimal empty-solid file (`"solid empty\nendsolid empty"`, 26 bytes). Caught by `testThrowsOnEmptyASCIIFile` failing on real hardware: expected `.emptyFile`, got `.truncatedBinaryHeader`. | Was a real, test-caught bug (Phase 2 slice 1) | **Resolved and confirmed** | Root cause: the length check (`bytes.count >= 84`) ran *before* the "solid" prefix check, so any file under 84 bytes was assumed binary regardless of content — wrong whenever the file legitimately starts with "solid" and is just short. Fixed by checking the "solid" prefix first. **Confirmed on real hardware, 2026-09-07: all 10 `GeometryKitTests` pass, plus all 3 `AppCoreTests` — 13/13 total.** This is a genuine example of the test-first process working end to end: a real bug was caught by a real test on real hardware, root-caused correctly, fixed, and the fix was then itself confirmed by re-running the same test — not just argued to be correct by re-reading the code. |
 
@@ -415,9 +416,13 @@ or run anywhere**.
 
 ## 9. OPEN QUESTIONS
 
-1. Who owns/hosts the actual GitHub repository (org vs. personal account),
-   and what is the final repo URL? `README.md` and
-   `Documentation/developer-setup.md` currently use a `<org>` placeholder.
+1. ~~Who owns/hosts the actual GitHub repository, and what is the final
+   repo URL?~~ **Partially resolved:** the repository is live on GitHub
+   under the name `LibreTunnel` and `git push` succeeds (an earlier
+   remote URL had a literal `REPO` placeholder never swapped for the
+   real name — fixed). Still open: the exact `<org>`/username to put in
+   `README.md` and `Documentation/developer-setup.md`'s clone
+   instructions, currently placeholders.
 2. Who is the designated contact for `SECURITY.md` and
    `CODE_OF_CONDUCT.md` enforcement? Both currently note this as
    unresolved rather than guessing.
@@ -1227,31 +1232,114 @@ then manually tests the Import stage with a real OBJ file. Report
 results either way. Once confirmed, Phase 2's final slice (geometry
 validation/repair) can begin.
 
+## [2026-09-08 09:00] — CI catches a real bug local beta toolchain missed: MainActor init isolation
+
+**Action:**
+GitHub Actions `build-and-test` failed on the push containing Phase 2
+slice 2 (OBJ import) plus the earlier Dock-icon fix. Retrieved the
+actual compiler error from the Actions log (screenshot provided) rather
+than guessing from the red status alone.
+
+**Reason:**
+A red CI check with no further investigation tells us nothing
+actionable — the same standard applied to every other failure in this
+project.
+
+**Changes:**
+- Root-caused: `error: call to main actor-isolated initializer 'init()'
+  in a synchronous nonisolated context`, at `ImportView.swift`'s
+  `@State private var viewModel = ImportViewModel()`. `ImportViewModel`
+  is `@MainActor`, making its implicit synthesized `init()` main-actor-
+  isolated too; the `@State` property initializer runs in a context the
+  compiler does not treat as isolated, even though SwiftUI views always
+  end up running on the main thread at runtime.
+- Confirmed this exact code had already compiled successfully locally
+  (Swift 6.4 beta, Phase 2 slice 1's "Build complete! (6.37 sec)") —
+  meaning the newer beta compiler is *more lenient* about this pattern
+  than the older, stable Swift 5.10 that CI runs (Xcode 15.4). This is
+  the inverse of the SwiftUI-macro-plugin issue from Phase 1: there, a
+  bare environment was *missing* something the beta toolchain needed;
+  here, the beta toolchain is *accepting* something a mainstream, stable
+  toolchain correctly rejects. Both are real portability gaps surfaced
+  by testing on more than one environment.
+- Fixed with an explicit `nonisolated init() {}` on `ImportViewModel` —
+  the standard, documented pattern for constructing a `@MainActor` type
+  from a non-isolated context. Verified safe: the initializer only
+  triggers `state`'s own default value (`= .idle`), which touches no
+  actor-isolated data.
+
+**Files affected:**
+- `Sources/LibreTunnel/ImportViewModel.swift`
+- This file (Known Bugs, this entry, Sections 12/16)
+
+**Result:**
+Fix written, brace/paren balance verified. **Not yet confirmed** by a
+green CI run or a fresh local build — this is exactly the kind of fix
+that needs re-verification on the environment that actually caught the
+problem (CI/Swift 5.10), not just on the environment that already
+accepted the old code (local/Swift 6.4 beta).
+
+**Tests:**
+No unit test applicable — this is a compile-time actor-isolation error,
+not a logic bug `GeometryKitTests`/`AppCoreTests` would exercise. The
+real test is: does `swift build` succeed on both environments now.
+
+**Problems discovered:**
+A concrete, valuable illustration of why this project's CI runs on a
+standard, stable macOS/Xcode image rather than relying solely on the
+project owner's beta-OS local machine: this bug was invisible locally
+and would have shipped to any user on a non-beta Mac.
+
+**Decision / reasoning:**
+Chose the `nonisolated init()` fix over alternatives (e.g., marking the
+whole `ImportView` struct `@MainActor`, or lazily constructing the view
+model in `.onAppear`) because it's the most targeted change — it
+resolves exactly the isolation mismatch without altering where
+`ImportViewModel`'s methods run, which still need `@MainActor` to
+safely mutate `state` from background work.
+
+**Next step:**
+Project owner merges this fix, runs `swift build && swift test` locally
+(expect 25/25, and this is also a chance to finally get the local
+build/test confirmation for slice 2 that was skipped in favor of the
+git-push detour), pushes, and confirms CI goes green. Only then is
+Phase 2 slice 2 actually closed.
+
 ---
 
 # 12. SESSION CHECKPOINT
 
 **Last completed action:**
-Implemented Phase 2, slice 2: OBJ geometry import (`OBJImporter`,
-`GeometryImporter` format dispatch) with 12 unit tests, wired into the
-Import stage UI alongside STL. Written and internally reviewed; not yet
-compiled or run on real hardware.
+Diagnosed and fixed a real CI-caught bug: `ImportViewModel`'s implicit
+`@MainActor`-isolated `init()` couldn't be called from `ImportView`'s
+non-isolated `@State` property-initializer context on the stable Swift
+5.10 toolchain CI runs, even though it compiled fine on the project
+owner's Swift 6.4 beta locally. Fixed with an explicit
+`nonisolated init()`.
 
 **Current state:**
-Phase 1 and Phase 2 slice 1 remain fully verified. Phase 2 slice 2 is
-written and unit-test-covered but **unverified** — stated with full
-seriousness given slice 1's own history of a real bug surviving review.
+Phase 1 and Phase 2 slice 1 remain fully verified. Phase 2 slice 2 (OBJ
+import) is written, unit-test-covered, and now includes this fix, but
+is still **unverified end to end** — CI failed once already on this
+slice, the fix hasn't been confirmed by a green run yet, and the local
+`swift build && swift test` confirmation for slice 2 was never actually
+done (skipped in favor of resolving the git-push authentication issue).
 
 **Current problem:**
-None known, but "none known" reflects review only, not execution.
+None blocking, but explicitly unresolved: need both a local
+`swift build && swift test` pass (25/25 expected) and a green CI run
+before treating Phase 2 slice 2 as done. Given CI just caught something
+local testing alone missed, both matter here, not just one.
 
 **Next exact action:**
-1. Project owner runs `swift build && swift test` on real Apple Silicon
-   hardware; expect 25/25 total (3 `AppCoreTests` + 10 STL + 12 OBJ).
-2. If all pass, manually test the Import stage with a real `.obj` file.
-3. Report results either way and update Section 16 with real data.
-4. Once confirmed, begin Phase 2's final slice: geometry validation and
-   repair.
+1. Project owner merges the `ImportViewModel.swift` fix.
+2. Runs `swift build && swift test` locally; expect 25/25 total (3
+   `AppCoreTests` + 10 STL + 12 OBJ) — this is also the first real local
+   confirmation of slice 2 overall, not just the fix.
+3. Manually tests the Import stage with a real `.obj` file.
+4. Commits, pushes, and confirms GitHub Actions goes green this time.
+5. Once all of the above are true, Phase 2 slice 2 is genuinely closed.
+   Begin Phase 2's final slice: geometry validation and repair.
 
 **Do not restart completed work unless there is evidence that it is incorrect.**
 
@@ -1319,49 +1407,51 @@ These rules apply to every AI working on this repository.
 # 16. LAST VERIFIED STATE
 
 **Date:**
-2026-09-07
+2026-09-08
 
 **Build:**
-**PASS for Phase 1 and Phase 2 slice 1**, confirmed on real Apple
-Silicon hardware (M1, macOS 27 Beta, Xcode-beta 27.0). **NOT YET
-TESTED for Phase 2 slice 2** (OBJ import) — written after the last
-confirmation, not yet built on real hardware.
+**PASS for Phase 1 and Phase 2 slice 1**, confirmed on real hardware.
+**FAILED for Phase 2 slice 2 on GitHub Actions CI** (Xcode 15.4, Swift
+5.10): main-actor-isolation error in `ImportViewModel`/`ImportView`,
+despite this same code having compiled successfully locally on Swift
+6.4 beta. Fix written (`nonisolated init()`); **not yet confirmed** by
+either a fresh local build or a green CI run.
 
 **Tests:**
-**13/13 PASS, confirmed on real hardware, 2026-09-07** — Phase 1 +
-Phase 2 slice 1 (3/3 `AppCoreTests`, 10/10 STL `GeometryKitTests`),
-including a real bug found, fixed, and re-verified in the same session.
-**12 new OBJ tests (`OBJImporterTests`) written, NOT YET RUN.** Expect
-25/25 total once slice 2 is verified — do not assume that number until
-it's real.
+**13/13 PASS, confirmed on real hardware, 2026-09-07** for Phase 1 +
+Phase 2 slice 1. **12 new OBJ tests (`OBJImporterTests`) written but
+never actually executed anywhere** — the local `swift build && swift
+test` step for slice 2 was skipped in favor of the git-push detour, and
+CI failed at the build step before tests could even run. Expect 25/25
+total once both a local run and CI succeed — treat as fully unverified
+until then.
 
 **Application launches:**
-**YES, fully confirmed for Phase 1** (all five sidebar stages clicked
-through) **and for the Import stage's STL functionality** (real file
-tested end-to-end by the project owner). Dock icon behavior under
-`swift run` explained and fixed. **NOT YET TESTED** for the Import
-stage's OBJ functionality specifically.
+**YES, fully confirmed for Phase 1** and **for the Import stage's STL
+functionality**. Dock icon behavior under `swift run` explained and
+fixed. **NOT confirmed for OBJ** — blocked behind the CI-caught build
+failure above.
 
 **Major functionality verified:**
-Build system, `AppCore.AppInfo`, the SwiftUI app shell's launch/
-navigation, and `GeometryKit`'s STL import are all confirmed working on
-real hardware end-to-end, including through the actual UI. OBJ import
-(`OBJImporter`, `GeometryImporter`) is implemented and unit-test-covered
-but not yet confirmed on real hardware — treat as unverified until it
-is, exactly as STL was treated before its own verification (which, not
-incidentally, is what caught a real bug).
+Build system, `AppCore.AppInfo`, the SwiftUI app shell, and
+`GeometryKit`'s STL import are confirmed working on real hardware
+end-to-end. OBJ import (`OBJImporter`, `GeometryImporter`) is
+implemented and unit-test-covered on paper but has never successfully
+built anywhere with the current code — the CI failure is real, current,
+unresolved-until-reverified information, not a historical footnote.
 
 **Known issues:**
-None open in confirmed code. Phase 2 slice 2 (OBJ import) has no known
-issues, but "none known" reflects review only — see Tests, above. Two
-repo-hygiene items from a prior round (duplicate root
-`STLImporter.swift`, misnamed `gitignore`) had a fix given; not
-re-confirmed applied in this round — see Section 10.
+One open, real issue: Phase 2 slice 2 fails to build on the stable
+Swift 5.10 toolchain CI uses (Known Bugs, Section 5) — fix written, not
+yet confirmed. Two repo-hygiene items from a prior round (duplicate root
+`STLImporter.swift`, misnamed `gitignore`) had a fix given; still not
+explicitly re-confirmed applied — see Section 10.
 
 **Ready for another AI agent to continue:**
-YES. Phase 1 and Phase 2 slice 1 are both genuinely verified, including
-through the real UI. Phase 2 slice 2 (OBJ import) is written but
-unverified — the next session's first job is running
-`swift build && swift test` on real hardware and updating this section
-with the real result, not assuming it works because slice 1 eventually
-did.
+YES, with an explicit warning: do not assume Phase 2 slice 2 works.
+As of this writing it has never successfully built via CI, and its
+local build/test results were never actually captured before a CI
+failure was discovered. The next session's first job is confirming the
+`nonisolated init()` fix via both a local `swift build && swift test`
+and a green CI run — two different toolchains, both need to actually
+pass, not just one.
